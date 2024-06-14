@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! rebuild_me {
     () => {{
-        use misplaced::Shlex;
+        use misplaced::{Shlex, needs_rebuild};
 
         let program_source = file!();
         let mut args = std::env::args();
@@ -10,15 +10,7 @@ macro_rules! rebuild_me {
             std::process::exit(1);
         };
 
-        let program_modification_time = std::fs::metadata(&program_name)
-            .and_then(|x| x.modified())
-            .expect("[ERROR] Cannot get info on self: {}");
-
-        let source_modification_time = std::fs::metadata(&program_source)
-            .and_then(|x| x.modified())
-            .expect("[ERROR] Cannot get info on one's code: {}");
-
-        if source_modification_time > program_modification_time {
+        if needs_rebuild(&program_name, &program_source) {
             println!("[INFO] renaming {} -> {}.old", program_name, program_name);
             let old_program_name = program_name.clone() + ".old";
             std::fs::rename(&program_name, old_program_name).expect("[ERROR] Cannot move old self: {}");
@@ -42,11 +34,19 @@ macro_rules! rebuild_me {
     }}
 }
 
+pub fn needs_rebuild<T: AsRef<std::path::Path>, S: AsRef<std::path::Path>>(target: T, source: S) -> bool {
+    // This is what functional programming does to you
+    std::fs::metadata(target)
+        .and_then(|target| target.modified())
+        .and_then(|target| std::fs::metadata(source)
+            .and_then(|source| source.modified())
+            .map(|source| target < source))
+        .unwrap_or(true)
+}
+
 pub trait Shlex {
     fn run(&mut self) -> std::io::Result<std::process::ExitStatus>;
 }
-
-
 
 fn write_quoted<W: std::io::Write>(mut w: W, mut s: &[u8]) -> std::io::Result<()> {
     if s.is_empty() {
@@ -56,8 +56,7 @@ fn write_quoted<W: std::io::Write>(mut w: W, mut s: &[u8]) -> std::io::Result<()
     let is_safe = s.iter().all(|x| b"@%+=:,./-".contains(x)
                                  || (b'a'..b'z').contains(&x)
                                  || (b'A'..b'Z').contains(&x)
-                                 || (b'0'..b'9').contains(&x)
-                            );
+                                 || (b'0'..b'9').contains(&x));
     if is_safe {
         write!(w, "{}", unsafe { std::str::from_utf8_unchecked(s) })?;
     } else {
