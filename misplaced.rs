@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! rebuild_me {
     () => {{
-        use misplaced::{Shlex, needs_rebuild};
+        use misplaced::{needs_rebuild, Shlex};
 
         let program_source = file!();
         let mut args = std::env::args();
@@ -13,7 +13,8 @@ macro_rules! rebuild_me {
         if needs_rebuild(&program_name, &program_source) {
             println!("[INFO] renaming {} -> {}.old", program_name, program_name);
             let old_program_name = program_name.clone() + ".old";
-            std::fs::rename(&program_name, old_program_name).expect("[ERROR] Cannot move old self: {}");
+            std::fs::rename(&program_name, old_program_name)
+                .expect("[ERROR] Cannot move old self: {}");
 
             let compiled = std::process::Command::new("rustc")
                 .args([program_source, "-o", &program_name])
@@ -21,26 +22,33 @@ macro_rules! rebuild_me {
                 .unwrap();
 
             if compiled.success() {
-                std::process::exit(std::process::Command::new(program_name)
-                    .args(args)
-                    .run()
-                    .unwrap()
-                    .code()
-                    .unwrap_or(-1));
+                std::process::exit(
+                    std::process::Command::new(program_name)
+                        .args(args)
+                        .run()
+                        .unwrap()
+                        .code()
+                        .unwrap_or(-1),
+                );
             } else {
                 std::process::exit(compiled.code().unwrap_or(-1));
             }
         }
-    }}
+    }};
 }
 
-pub fn needs_rebuild<T: AsRef<std::path::Path>, S: AsRef<std::path::Path>>(target: T, source: S) -> bool {
+pub fn needs_rebuild<T: AsRef<std::path::Path>, S: AsRef<std::path::Path>>(
+    target: T,
+    source: S,
+) -> bool {
     // This is what functional programming does to you
     std::fs::metadata(target)
         .and_then(|target| target.modified())
-        .and_then(|target| std::fs::metadata(source)
-            .and_then(|source| source.modified())
-            .map(|source| target < source))
+        .and_then(|target| {
+            std::fs::metadata(source)
+                .and_then(|source| source.modified())
+                .map(|source| target < source)
+        })
         .unwrap_or(true)
 }
 
@@ -53,17 +61,19 @@ fn write_quoted<W: std::io::Write>(mut w: W, mut s: &[u8]) -> std::io::Result<()
         return write!(w, "''");
     }
 
-    let is_safe = s.iter().all(|x| b"@%+=:,./-".contains(x)
-                                 || (b'a'..b'z').contains(&x)
-                                 || (b'A'..b'Z').contains(&x)
-                                 || (b'0'..b'9').contains(&x));
+    let is_safe = s.iter().all(|x| {
+        b"@%+=:,./-".contains(x)
+            || (b'a'..b'z').contains(&x)
+            || (b'A'..b'Z').contains(&x)
+            || (b'0'..b'9').contains(&x)
+    });
     if is_safe {
         write!(w, "{}", unsafe { std::str::from_utf8_unchecked(s) })?;
     } else {
         write!(w, "'")?;
         while let Some(quote) = s.iter().position(|&x| x == b'\'') {
             w.write_all(&s[..quote])?;
-            s = &s[quote+1..];
+            s = &s[quote + 1..];
             write!(w, "'\"'\"'")?;
         }
         w.write_all(s)?;
