@@ -62,10 +62,7 @@ fn write_quoted<W: std::io::Write>(mut w: W, mut s: &[u8]) -> std::io::Result<()
     }
 
     let is_safe = s.iter().all(|x| {
-        b"@%+=:,./-".contains(x)
-            || (b'a'..b'z').contains(&x)
-            || (b'A'..b'Z').contains(&x)
-            || (b'0'..b'9').contains(&x)
+        b"@%+=:,./-".contains(x) || x.is_ascii_alphanumeric()
     });
     if is_safe {
         write!(w, "{}", unsafe { std::str::from_utf8_unchecked(s) })?;
@@ -94,7 +91,7 @@ impl Shlex for std::process::Command {
             write!(stdout, " ")?;
             write_quoted(&stdout, arg.as_encoded_bytes())?;
         }
-        writeln!(stdout, "")?;
+        writeln!(stdout)?;
         self.status()
     }
 }
